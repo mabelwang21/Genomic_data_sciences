@@ -1,0 +1,296 @@
+in fasta file with multiple seqs, can use $ more xx(file name) , to move forward, can input ' /> ' if you want to skip to next seq.
+or less xxx(file name), which can move forward and backwards.
+
+$sort xx will sort alphabetically 
+$sort -k 2n xx will sort second column numerically
+#or if want to sort by more than one column, e.g.
+$sort -k 3 -k 2n xx will sort third column alphabetically first then sort second column numerically
+$sort -u xx sort the unique ones; this is different from using 'uniq xx', which gives unique lines if names are continuous in the next.
+e.g.file season: winter winter summer summer summer winter
+$sort -u season will give winter summer
+$uniq season will give winter summer winter
+$uniq -c season will gives: 2 winter 3 summer 1 winter
+
+
+$common file1 file2
+#in order to use common, need to sort the files first
+
+#bed (browser extensive data) format:  score (0-1000 range) is how intense in the browser should be;
+0-based count:count first space before first base, and till count the space after last base;
+1-based count: just count each base
+#GTF: genomic tranform format
+#GFF: genomic feature format
+
+#gzip xx to compress file to .zip
+#gunzip xx to decompress file
+#similarly with bzip2, bunzip2 command for bz2 file type
+
+#build an archive use: tar -cvf xx.tar xx(files you want to put in archive) 
+#options -c( archive put together), -v (both), -f (from)
+#then can use gzip xx.tar go compress the archive
+# if want to extract files from archive, use: tar -xvf xx.tar
+##options -x (extract file), -f (from)
+
+# grep "xx" filename (is to grep whatever pattern in a file)
+# grep -v (#igmore the pattern in "") 
+
+# use wget from internet address to download files (e.g. download fastq files from NCBI)
+# wget ftp://ftp-trace.ncbi.nih.gov/sra/sra-instant/reads/ByRun/sra/SRR/SRRXXX/SRRXXXXXXX/SRRXXXXXX.sra
+# if want to stop downloading, use:
+# killall -9 wget
+
+##after downloaded, need to transfer to readable format, use: nohup fastq-dump SRRxxxxxx.sra &
+(any problems will write to nohup.out file automatically, this step will run in the backgroud)
+after done, can run: head SRRxxxxxxx.sra to check. 
+# use fastq--dump to check other options, if is pair-end reads, need to use -split-3 option.
+
+
+#samtools
+# to show the stat of bam file: samtools flagstat xx.bam
+# to sort bam file, use: samtools sort xx.bam xx.sorted (xx.sorted.bam is the name for sorted file)
+# can use nohup at begining to send the procesure to background same time we can run other commends:
+ nohup samtools sort xx.bam xx.sorted &
+
+# to index a bam file (must sort first), use:
+samtools index xx.sorted.bam
+
+#samtools to view bam file: samtools view -h xx.bam 
+#will translate bam to sam file and giving header.
+#if use -H option will only show header
+#transfer sam to bam file: samtools view -bT xx.fa xx.sam > xx.sam.bam (-b is binary, and T is indicate following by ref genome file, xx.fa).
+
+#to extract from certain chromosome range, need to index bam file first into .bai file: 
+samtools index example.bam
+ls -l example.bam.bai
+samtools view example.bam 'chrxxx-xxx' |more
+samtools view example.bam 'chr22:24000000-25000000'| head
+#or use a bed file directly instead of typing locations
+samtools view -L example.bed example.bam |head
+
+
+#zcat can show file in zip format without unzip it: zcat xxx.fastq.gz | wc -l (can count how many lines in zip file)
+#to merge two files (doing this in background): nohup samtools merge NA12814.merge.bam NA12814_1.bam NA12814_2.bam &
+
+
+#bedtools
+# to show intersect between two bam (or bed) files, can use: 
+bedtools intersect -a (first file) -b (second file)
+e.g.bedtools intersect -wo -a RefSeq.gtf -b ALus.bed (-wo option is intersect only, can also use -wao, or -wbo options)
+# can also find the overlapped gene name:bedtools intersect -wo -a RefSeq.gtf -b ALus.bed |cut -f9 | cut -d ' ' -f2| less (cut -f9 is to cut the 9th column; and within that column, cut second column (-d ' ', means seperated by a space), which is the gene_id name)
+# or count the unique gene: bedtools intersect -wo -a RefSeq.gtf -b ALus.bed |cut -f9 | cut -d ' ' -f2| sort -u | wc -l
+#or can use bedtools intersect -wo -a RefSeq.gtf -b ALus.bed |cut -f9 | cut -d ' ' -f2| uniq |wc -l
+
+#convert bam to bed format: bedtools bamtobed --help
+bedtools bamtobed -cigar -i NA12814_1.bam |less
+bedtools bamtobed -split -i NA12814_1.bam | grep ERR188081.370400
+
+#convert bed to bam format: bedtools bedtobam --help
+#if not use -bed12 option, output bam file alignment include intron
+bedtools bedtobam -i RefSeq.bed -g hg38c.hdrs > refseq.bam 
+samtools view refseq.bam
+# if use -bed12 option:
+bedtools bedtobam -bed12 -i RefSeq.bed -g hg38c.hdrs > refseq.bam 
+samtools view refseq.bam
+samtools view refseq.bam |less
+
+# to extract sequence to fasta file based on bed file features:bedtools getfasta --help
+bedtools getfasta -fi hg38.fa -bed Refseq.bed -fo Refseq.bed.fasta
+more Refseq.bed.fasta (output is the genomic sequences, including exons and introns)
+#can use -split function to specify that the bed file including multiple blocks(exon) per entry
+bedtools getfasta -split -fi hg38.fa -bed Refseq.bed -fo Refseq.bed.fasta
+
+############################################################
+# Bowtie
+
+# first use bowtie2 to build index:
+#assume put index to folder called index, and prefix with bowtie2
+$ mkdir index
+$ bowtie2-build xx.fasta ./index/bowtie2
+
+
+# Next is to map the index to the actual genome, check options for bowtie2, -x for index, -U if single end, ...etc
+# if want output alignment to be sam format can use:
+$ bowtie2 -p 5 -x  ./index/bowtie2 xxx.fastq -S bowtie2.bt2.sam
+# can also transfer sam to bam:
+$ samtools view -bT xx.fa bowtie2.bt2.sam > bowtie2.bt2.bam  
+(.fa is the fa file for the genome)
+$ samtools view bowtie2.bt2.bam | more
+
+#bowtie2 can also provides local alignment, which only match a portion of input read, use --local option:
+bowtie2 -p 5 --local -x  ./index/bowtie2 xxx.fastq -S bowtie2.local.bt2.sam
+
+#################################################################
+
+#BWA 
+
+# first use bwa to build index, will creat a list of files:
+$ bwa index xx.fasta
+
+# then use bwa to map the reads, there are 3 algorithms, the most applicable is mem, can use bwa mem to check options.
+$ bwa mem -t 4 xxx(index) xx.fastq > xx.bwa.sam
+
+
+################################################################
+
+#samtools mpileup
+$ samtools falgstat sample.bam 
+
+#typically need to sort first then index bam file
+$ samtools index sample.bam
+
+$ samtools mpileup -f xx.fa sample.bam > sample.mpileup
+# usually will save into a (uncompressed) vcf file (one line for each variance):
+$ samtools mpileup -v -u -f xx.fa sample.bam > sample.vcf
+
+# if want a compressed bcf format can use:
+$ samtools mpileup -g -f xx.fa sample.bam > sample.bcf
+
+################################################################
+
+
+#VCF/BCF tools for variance calling:
+
+# to view a bcf file:
+$ bcftools view sample.bcf
+
+# variance calling using bcf call:
+$ bcftools call -v -m -O z -o sample.vcf.gz sample.bcf
+(-v is only write the lines for variance; -m use multixx caller; -O z says use vcf compressed format; -o is the output file )
+# to view the compressed file w/o unzip it:
+$ zcat sample.vcf.gz 
+# to count how many variance:
+$ zcat sample.vcf.gz | grep -v "^#" | wc -l
+
+In summary:
+
+$ samtools index sample.bam 
+$ samptools mpileup -g -f xx.fasta sample.bam > sample.bcf
+$ bcftools call -v -m -O z -o sample.vcf.gz sample.bcf
+$ zcat sample.vcf.gz
+#to view a perticular section/location of variance:
+$ samtools tview -p 17:7579600 -d T sample.bam XXX.fasta | more
+
+##################################################################
+#tophat2
+
+#save all command into a log file:
+$tophat2 >& tophat2.log
+vi tophat2.log
+(can use q! not save and exit, or ZZ to save and exit)
+
+can create directory then use directly in command line , write all command line in a txt file, same as com.tophat2:
+#####################################################################3
+WORKDIR = /home/lu/RNAseq/tophat2
+DATADIR= /XX/XX/XXX
+ANNOT =/XX/XX/XXX
+BWTDIR= /XX/XX/XXX
+
+mkdir $WORKDIR/test1
+tophat2 -o $WORKDIR/test1 -p 10 --max-multihits=10\
+        -G ANNOT --transcriptome-index $ANNOT\
+        -r 120 --mate_std-dev 30 \
+        $BWTDIR \
+        $DATADIR/test1_1.fastq.gz $DATADIR/test1_2.fastq.gz
+################################################################
+
+then can run in background remotely, even can log-out, and save everything in log file:
+$nohup sh com.tophat2 >& com.tophat2.log &
+
+#compare all summary files:
+$grep 'overall read mapping rate' */align_summary.txt
+
+#########################################################
+
+#cufflinks
+
+#similar to tophat2, first write commands to file com.cufflinks:
+#############################
+THDIR = /XX/XX/XXX
+WORKDIR= /XX/XX/XXX
+
+mkdir -p $WORKDIR/test1
+cd $WORKDIR/test1
+cufflinks2 -L xxx(here is the ID label) -p $THDIR/test1/accepted_hits.bam
+######################################
+
+#then run in background:
+$nohup sh com.cufflinks >& com.cufflinks.log &
+
+#find unique genes or transcripts from output file transcripts.gtf:
+$cut -f9 transcripts.gtf | cut -d ' ' -f2 |sort -u |wc -l
+$cut -f9 transcripts.gtf | cut -d ' ' -f4 |sort -u |wc -l
+
+#####################
+#cuffmerge
+# put command in  com.cuffdiff file
+
+#############
+ANNNT = /XX/XX/XX
+
+cuffmerge -g $ANNOT -p 8 $WORKDIR/cuffmerge $WORKDIR/cuffmerge/GTFs.txt
+
+#############################
+$vi Cuffmerge/GTFs.txt
+/xx/xx/xxx/cufflinks/test1/transcripts.gtf
+/xx/xx/xxx/cufflinks/test2/transcripts.gtf
+/xx/xx/xxx/cufflinks/test3/transcripts.gtf
+/xx/xx/xxx/cufflinks/ctr1/transcripts.gtf
+/xx/xx/xxx/cufflinks/ctr2/transcripts.gtf
+/xx/xx/xxx/cufflinks/ctr3/transcripts.gtf
+#######################
+$nohup sh com.cuffdiff >& com.cuffdiff.log &
+
+#######################################################
+
+#cuffdiff
+#still use com.cuffdiff file
+#####################
+
+WORKDIR = /XX/XX/XXX
+ANNOT = /XX/XX/XX
+THDIR = /XX/XX/XXX
+
+cuffmerge -g $ANNOT -p 8 $WORKDIR/cuffmerge $WORKDIR/cuffmerge/GTFs.txt
+
+cuffdiff -o $WORKDIR/cuffdiff -p 10 $WORKDIR/cuffmerge/merged.gtf \
+          $TH/test1/accepted_hit.bam, $TH/test2/accepted_hit.bam, $TH/test3/accepted_hit.bam \
+          $TH/ctr1/accepted_hit.bam, $TH/ctr2/accepted_hit.bam, $TH/ctr3/accepted_hit.bam 
+
+#############################
+$nohup sh com.cuffdiff >& com.cuffdiff.log &
+
+# to find significantly DE genes:
+$ grep yes gene_exp.diff | wc -l
+
+##########################################
+
+#IGV:
+#tophat alignment files accepted_hit.bam or cufflinks transcript.gtf files. but both need to be index first:
+
+#select only if column 1 is chr9
+$cat cufflinks/ctr1/transcripts.gtf | awk '{ if ($1="chr9") print $_;}' > ctr1.gtf
+
+#same for all files:
+$cat cufflinks/ctr2/transcripts.gtf | awk '{ if ($1="chr9") print $_;}' > ctr2.gtf
+...
+$cat cufflinks/test3/transcripts.gtf | awk '{ if ($1="chr9") print $_;}' > test3.gtf
+
+# now sort all the files:
+$ igvtools sort test1.gtf test1.sorted.gtf
+$ igvtools sort test2.gtf test2.sorted.gtf
+...
+#same for all files
+
+# now index files:
+$ igvtools index test1.sorted.gtf
+...
+
+# alignment files are already sorted just need to index
+$ samtools view -b tophat2/test1/accetpted_hits.bam 'chr9' > chr9.test1.bam
+#(-b means we want bam file)
+
+$ samtools index chr9.test1.bam
+...
+
+# in IGV, upload test1.sorted.gtf,...then can upload chr9.test1.bam, and chr9.ctr1.bam,..to compare
+
